@@ -110,7 +110,6 @@ func (n *Notifier) Notify(ctx context.Context, as ...*types.Alert) (bool, error)
 		}
 		return false, fmt.Errorf("parse priority: %w", err)
 	}
-	}
 
 	req := messageRequest{
 		Title:    strings.TrimSpace(tmplText(n.conf.Title)),
