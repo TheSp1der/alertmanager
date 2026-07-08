@@ -140,7 +140,7 @@ func (n *Notifier) Notify(ctx context.Context, as ...*types.Alert) (bool, error)
 		return false, err
 	}
 	hReq.Header.Set("Content-Type", "application/json")
-	hReq.Header.Set("X-Gotify-Key", tmplText(token))
+	hReq.Header.Set("X-Gotify-Key", token)
 
 	resp, err := n.client.Do(hReq)
 	if err != nil {
