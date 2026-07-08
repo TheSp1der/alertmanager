@@ -105,7 +105,11 @@ func (n *Notifier) Notify(ctx context.Context, as ...*types.Alert) (bool, error)
 
 	priority, err := strconv.Atoi(strings.TrimSpace(tmplText(n.conf.Priority)))
 	if err != nil {
+		if tmplErr != nil {
+			return false, tmplErr
+		}
 		return false, fmt.Errorf("parse priority: %w", err)
+	}
 	}
 
 	req := messageRequest{
