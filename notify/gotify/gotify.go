@@ -39,11 +39,37 @@ type Notifier struct {
 	retrier *notify.Retrier
 }
 
+type gotifyRoundTripper struct {
+	wrapped http.RoundTripper
+	token   string
+}
+
+func (t *gotifyRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
+	req.Header.Set("X-Gotify-Key", t.token)
+	return t.wrapped.RoundTrip(req)
+}
+
 func New(c *GotifyConfig, t *template.Template, l *slog.Logger, httpOpts ...commoncfg.HTTPClientOption) (*Notifier, error) {
 	client, err := notify.NewClientWithTracing(*c.HTTPConfig, "gotify", httpOpts...)
 	if err != nil {
 		return nil, err
 	}
+
+	var token string
+	if c.Token != "" {
+		token = string(c.Token)
+	} else {
+		b, err := os.ReadFile(c.TokenFile)
+		if err != nil {
+			return nil, fmt.Errorf("read token_file: %w", err)
+		}
+		token = strings.TrimSpace(string(b))
+	}
+	if token == "" {
+		return nil, fmt.Errorf("gotify token is empty")
+	}
+
+	client.Transport = &gotifyRoundTripper{wrapped: client.Transport, token: token}
 
 	return &Notifier{
 		conf:    c,
@@ -80,17 +106,6 @@ func (n *Notifier) Notify(ctx context.Context, as ...*types.Alert) (bool, error)
 	data := notify.GetTemplateData(ctx, n.tmpl, as, logger)
 	var tmplErr error
 	tmplText := notify.TmplText(n.tmpl, data, &tmplErr)
-
-	var token string
-	if n.conf.Token != "" {
-		token = string(n.conf.Token)
-	} else {
-		b, err := os.ReadFile(n.conf.TokenFile)
-		if err != nil {
-			return false, fmt.Errorf("read token_file: %w", err)
-		}
-		token = strings.TrimSpace(string(b))
-	}
 
 	var url string
 	if n.conf.URL != nil {
@@ -138,14 +153,7 @@ func (n *Notifier) Notify(ctx context.Context, as ...*types.Alert) (bool, error)
 		return false, err
 	}
 
-	hReq, err := http.NewRequestWithContext(ctx, http.MethodPost, url, &buf)
-	if err != nil {
-		return false, err
-	}
-	hReq.Header.Set("Content-Type", "application/json")
-	hReq.Header.Set("X-Gotify-Key", token)
-
-	resp, err := n.client.Do(hReq)
+	resp, err := notify.PostJSON(ctx, n.client, url, &buf)
 	if err != nil {
 		if ctx.Err() != nil {
 			err = fmt.Errorf("%w: %w", err, context.Cause(ctx))
